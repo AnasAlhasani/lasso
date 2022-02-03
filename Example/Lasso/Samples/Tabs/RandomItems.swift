@@ -58,7 +58,7 @@ enum RandomItems: ScreenModule {
     }
 
     enum Action: Equatable {
-        case didSelectItem(Item)
+        case didSelectRow(IndexPath)
         case didUpdateSearchQuery(String?)
     }
     
@@ -69,10 +69,16 @@ enum RandomItems: ScreenModule {
     struct State: Equatable {
         let items: [Item]
         var query: String?
-        var foundItems: [Item]?
+        var foundItems: [Item]? {
+            didSet { allItems = foundItems ?? items }
+        }
+        
+        var allItems = [Item]()
     }
     
-    struct Item: Equatable {
+    enum Section { case main }
+    
+    struct Item: Equatable, Hashable {
         let name: String
         let description: String
     }
@@ -84,7 +90,8 @@ class RandomItemsStore: LassoStore<RandomItems> {
     override func handleAction(_ action: RandomItems.Action) {
         switch action {
             
-        case .didSelectItem(let item):
+        case .didSelectRow(let indexPath):
+            let item = state.allItems[indexPath.row]
             dispatchOutput(.didSelectItem(item))
             
         case .didUpdateSearchQuery(let query):
@@ -136,9 +143,7 @@ class RandomItemsViewController: UIViewController, LassoView {
         view.backgroundColor = .background
         
         tableView.register(type: UITableViewCell.self)
-        tableView.delegate = self
-        tableView.dataSource = self
-        
+
         searchController.searchResultsUpdater = self
         searchController.hidesNavigationBarDuringPresentation = false
         searchController.obscuresBackgroundDuringPresentation = false
@@ -157,14 +162,28 @@ class RandomItemsViewController: UIViewController, LassoView {
         
         tableView.layout.fill(.safeArea)
         
-        // State observations:
-        // (note that `items` is a `let` property - meaning it won't change - so no need to observe it)
-        store.observeState(\.query) { [weak self] query in
-            self?.searchController.searchBar.text = query
+        setUpBindings()
+    }
+    
+    private func setUpBindings() {
+        if #available(iOS 13.0, *) {
+            let dataSource = tableView.diffableDataSource(cellType: UITableViewCell.self) { (cell, _, item: RandomItems.Item) in
+                cell.textLabel?.text = item.name
+            }
+            
+            store.observeState(\.allItems) { dataSource.appendItems($0, toSection: RandomItems.Section.main) }
         }
-        store.observeState(\.foundItems) { [weak self] _ in
-            self?.tableView.reloadData()
+        
+        else {
+            let dataSource = tableView.dataSource(cellType: UITableViewCell.self) { (cell, _, item: RandomItems.Item) in
+                cell.textLabel?.text = item.name
+            }
+            
+            store.observeState(\.allItems) { dataSource.appendItems($0).reloadData() }
         }
+        
+        store.observeState(\.query) { [weak self] in self?.searchController.searchBar.text = $0 }
+        tableView.bindDidSelectRow(to: store, action: RandomItems.Action.didSelectRow)
     }
     
 }
@@ -173,33 +192,6 @@ extension RandomItemsViewController: UISearchResultsUpdating {
     
     func updateSearchResults(for searchController: UISearchController) {
         store.dispatchAction(.didUpdateSearchQuery(searchController.searchBar.text))
-    }
-    
-}
-
-extension RandomItemsViewController: UITableViewDelegate {
-    
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        let items = store.state.foundItems ?? store.state.items
-        let item = items[indexPath.row]
-        
-        store.dispatchAction(.didSelectItem(item))
-    }
-}
-
-extension RandomItemsViewController: UITableViewDataSource {
-    
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return store.state.foundItems?.count ?? store.state.items.count
-    }
-    
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueCell(type: UITableViewCell.self, indexPath: indexPath)
-        let items = store.state.foundItems ?? store.state.items
-        let item = items[indexPath.row]
-        cell.textLabel?.text = item.name
-        return cell
     }
     
 }
