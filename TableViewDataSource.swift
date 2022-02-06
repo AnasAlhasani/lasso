@@ -50,7 +50,7 @@ public final class TableViewDataSource<Item>: NSObject, UITableViewDataSource {
     }
     
     @discardableResult
-    public func appendItems(_ items: [Item]) -> Self {
+    public func setItems(_ items: [Item]) -> Self {
         self.items = items
         return self
     }
@@ -121,5 +121,28 @@ extension UITableView {
         }
         
         return cell
+    }
+}
+
+extension AnyViewStore {
+    public func observeState<Value>(
+        _ keyPath: WritableKeyPath<ViewState, [Value]>,
+        bindTo dataSource: TableViewDataSource<Value>
+    ) where Value: Equatable {
+        observeState(keyPath) { _, newValue in
+            // TODO: Add support for diffing the elements instead of `reloadData`
+            dataSource.setItems(newValue).reloadData()
+        }
+    }
+    
+    @available(iOS 13.0, *)
+    public func observeState<Value>(
+        _ keyPath: WritableKeyPath<ViewState, [Value]>,
+        toSection section: AnyHashable = 0,
+        bindTo dataSource: UITableViewDiffableDataSource<AnyHashable, Value>
+    ) where Value: Equatable {
+        observeState(keyPath) { _, newValue in
+            dataSource.appendItems(newValue, toSection: section)
+        }
     }
 }

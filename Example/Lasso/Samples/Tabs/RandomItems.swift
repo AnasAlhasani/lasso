@@ -167,19 +167,14 @@ class RandomItemsViewController: UIViewController, LassoView {
     
     private func setUpBindings() {
         if #available(iOS 13.0, *) {
-            let dataSource = tableView.diffableDataSource(cellType: UITableViewCell.self) { (cell, _, item: RandomItems.Item) in
-                cell.textLabel?.text = item.name
-            }
-            
-            store.observeState(\.allItems) { dataSource.appendItems($0, toSection: RandomItems.Section.main) }
+            store.observeState(\.allItems, bindTo: tableView.diffableDataSource(cellType: UITableViewCell.self) { cell, _, item in
+                cell.configure(with: item)
+            })
         }
-        
         else {
-            let dataSource = tableView.dataSource(cellType: UITableViewCell.self) { (cell, _, item: RandomItems.Item) in
-                cell.textLabel?.text = item.name
-            }
-            
-            store.observeState(\.allItems) { dataSource.appendItems($0).reloadData() }
+            store.observeState(\.allItems, bindTo: tableView.dataSource(cellType: UITableViewCell.self) { cell, _, item in
+                cell.configure(with: item)
+            })
         }
         
         store.observeState(\.query) { [weak self] in self?.searchController.searchBar.text = $0 }
@@ -194,4 +189,10 @@ extension RandomItemsViewController: UISearchResultsUpdating {
         store.dispatchAction(.didUpdateSearchQuery(searchController.searchBar.text))
     }
     
+}
+
+extension UITableViewCell {
+    fileprivate func configure(with item: RandomItems.Item) {
+        textLabel?.text = item.name
+    }
 }
